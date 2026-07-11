@@ -2,6 +2,12 @@ class_name MqttVibedClientExample
 extends Node
 
 
+signal on_server_to_client_received_byte(package:PackedByteArray)
+signal on_server_to_client_received_text(text:String)
+#signal on_client_to_server_received_byte(package:PackedByteArray)
+#signal on_client_to_server_received_text(text:String)
+
+
 @export var mqtt_client:MqttVibedClient 
 @export var mqtt_url: String = "tcp://test.mosquitto.org:1883"
 @export var client_id: String = "Godot Client"
@@ -32,14 +38,32 @@ func _ready():
 	timer.start(1.0)
 
 
+var bytes_screen :PackedByteArray = PackedByteArray()
+# random bytes of 128x64 bits (128 * 64 / 8 = 1024 bytes)
 func _on_timer_timeout() -> void:
 	var random_texts = ["hello", "world", "test", "mqtt", "godot", "random"]
 	var random_text = random_texts[randi() % random_texts.size()]
 	mqtt_client.publish("test/topic", random_text)
-
+	
+	bytes_screen.resize((128*64)/8)
+	for i in range(bytes_screen.size()):
+		bytes_screen[i] = randi() % 256
+	var b64:String = Marshalls.raw_to_base64(bytes_screen)
+	var b64_text:String = "b64|" + b64
+	print("SIZE OUT: %d" % b64.length() )
+	mqtt_client.publish("test/topic", b64_text)
+	
 
 func _on_mqtt_message(topic:String, message) -> void:
 	var payload = message.payload.get_string_from_utf8() if message is Object and "payload" in message else str(message)
 	print("Received message on topic '%s': %s" % [topic, payload])
+	if payload.begins_with("b64|"):
+		var b64_data = payload.substr(4, payload.length() - 4)
+		var byte_array = Marshalls.base64_to_raw(b64_data)
+		print ("SIZE IN: %d" % byte_array.size())
+		on_server_to_client_received_byte.emit(byte_array)
+	else:
+		on_server_to_client_received_text.emit(payload)
+	
 
 	
